@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05041a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Star Voyager">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>Star Voyager</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -131,14 +139,12 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 .stat i{font-style:normal; font-family:var(--display); font-size:clamp(7px,1cqw,11px); letter-spacing:.3em; color:var(--dim)}
 
 .chip{
-  position:absolute; top:1.4cqw; z-index:4;
   font-family:var(--display); font-weight:700; font-size:clamp(8px,1.05cqw,11px); letter-spacing:.25em; text-decoration:none;
   padding:.7em 1.1em; border-radius:999px; border:1px solid var(--line); color:var(--dim);
   background:rgba(8,7,30,.6); cursor:pointer; transition:color .2s, border-color .2s;
 }
 .chip:hover{color:var(--ink); border-color:var(--ink)}
-.chip.back{left:1.6cqw; font-size:clamp(9px,1.3cqw,13px); color:var(--ink); border-color:rgba(0,240,255,.5)}
-.chip.mute{right:1.6cqw}
+.chip.back{font-size:clamp(9px,1.3cqw,13px); color:var(--ink); border-color:rgba(0,240,255,.5)}
 .chip.off{color:var(--pink); border-color:rgba(255,46,147,.5)}
 
 .hints{display:flex; justify-content:center; gap:20px; flex-wrap:wrap; font-size:clamp(11px,1.3vw,14px); color:var(--dim); letter-spacing:.12em; text-transform:uppercase}
@@ -153,8 +159,10 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 }
 :focus-visible{outline:2px solid var(--yellow); outline-offset:3px}
 </style>
+<link rel="stylesheet" href="mobile.css">
+<script src="shared.js" defer></script>
 </head>
-<body>
+<body data-game>
 <div class="cabinet">
   <div class="hud dim" id="hud">
     <div class="blk">
@@ -177,8 +185,14 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
   <div class="stage" id="stage">
     <canvas id="c" aria-label="Star Voyager game field"></canvas>
     <div class="crt"></div>
-    <a class="chip back" href="index.html">&larr; HOME</a>
-    <button class="chip mute" id="muteBtn" type="button">SOUND ON</button>
+    <div class="chips">
+      <div class="grp"><a class="chip back" href="index.html">&larr; HOME</a></div>
+      <div class="grp">
+        <button class="chip pausebtn" id="pauseBtn" type="button" aria-label="Pause" hidden>&#10074;&#10074;</button>
+        <button class="chip" id="fsBtn" type="button" hidden>FULLSCREEN</button>
+        <button class="chip mute" id="muteBtn" type="button">SOUND ON</button>
+      </div>
+    </div>
 
     <!-- MENU -->
     <div class="overlay show" id="menu">
@@ -194,7 +208,8 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 
       <button class="btn pulse" id="startBtn" type="button">LAUNCH</button>
       <div class="small" id="bestLine"></div>
-      <div class="small keys hide-sm"><kbd>WASD</kbd>or<kbd>MOUSE</kbd>fly &nbsp;&middot;&nbsp; <kbd>SPACE</kbd>fire &nbsp;&middot;&nbsp; <kbd>F</kbd>auto-fire</div>
+      <div class="small only-touch">Drag anywhere to fly &middot; auto-fire is on</div>
+      <div class="small keys hide-sm only-kbd"><kbd>WASD</kbd>or<kbd>MOUSE</kbd>fly &nbsp;&middot;&nbsp; <kbd>SPACE</kbd>fire &nbsp;&middot;&nbsp; <kbd>F</kbd>auto-fire</div>
     </div>
 
     <!-- PAUSE -->
@@ -238,7 +253,8 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 'use strict';
 
 /* ================= constants & helpers ================= */
-const W = 1000, H = 600, TAU = Math.PI * 2, STEP = 1 / 120;
+let W = 1000;
+const H = 600, TAU = Math.PI * 2, STEP = 1 / 120;
 const FONT = "'Orbitron','Segoe UI',system-ui,sans-serif";
 const COL = { cyan: '0,240,255', pink: '255,46,147', yellow: '255,225,77', green: '93,255,158', red: '255,70,70',
               orange: '255,150,60', white: '255,255,255', violet: '170,110,255', rose: '255,90,120' };
@@ -248,6 +264,9 @@ const pick = a => a[Math.floor(Math.random() * a.length)];
 const d2 = (ax, ay, bx, by) => { const dx = ax - bx, dy = ay - by; return dx * dx + dy * dy; };
 const rgba = (c, a) => `rgba(${c},${a})`;
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const LITE = matchMedia('(pointer: coarse)').matches;   // phones: fewer particles, auto-fire always on
+let UIS = 1;                                            // canvas text scale so HUD stays readable on small screens
+const buzz = ms => { try { window.Arcade && Arcade.buzz(ms); } catch {} };
 const $ = id => document.getElementById(id);
 const cvs = $('c'), ctx = cvs.getContext('2d');
 
@@ -294,7 +313,7 @@ const S = {
   score: 0, kills: 0, mult: 0,
   time: 0, shake: 0, hurt: 0, speed: 260, nebX: 0,
   banner: null, clearT: 0, boss: null, bossDeadT: 0, overDelay: 0, newBest: false,
-  holding: false, auto: saved.auto !== false,
+  holding: false, auto: LITE || saved.auto !== false,
   spawn: { obs: 2, planet: 6, germ: 12, en: 4 },
 };
 const ship = { x: 150, y: H / 2, vx: 0, vy: 0, tx: 150, ty: H / 2, r: 13, hp: 100, maxHp: 100,
@@ -346,10 +365,11 @@ const sfx = {
 
 /* ================= fx ================= */
 function burst(x, y, col, n, spd, dir = null, spread = TAU, size = [1.5, 4], life = [.35, .95]) {
+  if (LITE) n = Math.ceil(n * .55);
   for (let k = 0; k < n; k++) {
     const a = dir === null ? Math.random() * TAU : dir + (Math.random() - .5) * spread;
     const s = spd * (.2 + Math.random() * .8);
-    if (parts.length > 900) parts.shift();
+    if (parts.length > (LITE ? 450 : 900)) parts.shift();
     parts.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s, life: 0, max: rand(life[0], life[1]), size: rand(size[0], size[1]), col });
   }
 }
@@ -472,6 +492,7 @@ function spawnBoss() {
   enemies.push(e); S.boss = e;
   setBanner([{ t: 'WARNING', s: 64, c: COL.red }, { t: 'MOTHERSHIP APPROACHING', s: 22, c: COL.white }], 3);
   sfx.warn();
+  buzz(120);
 }
 function spawnGerm(type) {
   if (!type) {
@@ -503,6 +524,7 @@ function hurt(d, inv = 0) {
   if (ship.shield > 0) { ship.shieldHit = 1; sfx.shield(); return false; }
   ship.hp -= d; ship.flash = 1; ship.inv = Math.max(ship.inv, inv);
   S.shake = Math.max(S.shake, 9); S.hurt = 1;
+  buzz(35);
   burst(ship.x, ship.y, COL.red, 12, 220);
   sfx.hit();
   if (ship.hp <= 0) die();
@@ -515,6 +537,7 @@ function die() {
   burst(ship.x, ship.y, COL.white, 40, 420);
   ring(ship.x, ship.y, COL.cyan, 200);
   S.shake = 24; sfx.over();
+  buzz(220);
   keys.fire = false;
 }
 
@@ -571,6 +594,7 @@ function pickup(g) {
   burst(g.x, g.y, def.col, 26, 260); ring(g.x, g.y, def.col, 70);
   floatText(def.name, g.x, g.y - 20, def.col, 20);
   sfx.pickup();
+  buzz(15);
   if (g.type === 'shield') ship.shield = def.dur;
   else if (g.type === 'over') ship.over = def.dur;
   else if (g.type === 'mult') S.mult = def.dur;
@@ -1108,7 +1132,7 @@ function drawFx() {
   ctx.save(); ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
   for (const f of floats) {
     const a = 1 - f.life / f.max;
-    ctx.font = `900 ${f.size}px ${FONT}`; ctx.shadowColor = `rgb(${f.col})`; ctx.shadowBlur = 12;
+    ctx.font = `900 ${f.size * (f.size < 30 ? UIS : 1)}px ${FONT}`; ctx.shadowColor = `rgb(${f.col})`; ctx.shadowBlur = 12;
     ctx.fillStyle = rgba(f.col, a); ctx.fillText(f.text, f.x, f.y);
   }
   ctx.restore();
@@ -1132,46 +1156,51 @@ function drawOverlayBits() {
   if (ship.shield > 0) pu.push(['SHIELD', COL.green, ship.shield / 8]);
   if (ship.over > 0) pu.push(['OVERDRIVE', COL.yellow, ship.over / 8]);
   if (S.mult > 0) pu.push(['SCORE x2', COL.violet, S.mult / 10]);
+  const ph = 17 * UIS, pw = 150 * UIS;
   pu.forEach(([n, c, f], i) => {
-    const y = 52 + i * 22;
-    ctx.fillStyle = rgba(c, .18); ctx.beginPath(); ctx.roundRect(16, y, 150, 17, 8); ctx.fill();
-    ctx.fillStyle = rgba(c, .85); ctx.beginPath(); ctx.roundRect(16, y, Math.max(8, 150 * f), 17, 8); ctx.fill();
-    ctx.fillStyle = '#06051a'; ctx.font = `900 10px ${FONT}`; ctx.textAlign = 'left'; ctx.fillText(n, 26, y + 9);
+    const y = (UIS > 1.2 ? 14 : 52) + i * (ph + 5);
+    ctx.fillStyle = rgba(c, .18); ctx.beginPath(); ctx.roundRect(16, y, pw, ph, ph / 2); ctx.fill();
+    ctx.fillStyle = rgba(c, .85); ctx.beginPath(); ctx.roundRect(16, y, Math.max(ph / 2, pw * f), ph, ph / 2); ctx.fill();
+    ctx.fillStyle = '#06051a'; ctx.font = `900 ${10 * UIS}px ${FONT}`; ctx.textAlign = 'left'; ctx.fillText(n, 16 + ph * .6, y + ph / 2 + 1);
   });
 
   // boss bar
   if (S.boss) {
     const e = S.boss, w = 360, x = W / 2 - w / 2;
-    ctx.textAlign = 'center'; ctx.fillStyle = rgba(COL.pink, .9); ctx.font = `700 11px ${FONT}`; ctx.fillText('MOTHERSHIP', W / 2, 20);
-    ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.roundRect(x, 30, w, 8, 4); ctx.fill();
+    const ly = 8 + 7 * UIS, by = ly + 6 + 4 * UIS, bh = 8 * Math.min(UIS, 1.5);
+    ctx.textAlign = 'center'; ctx.fillStyle = rgba(COL.pink, .9); ctx.font = `700 ${11 * UIS}px ${FONT}`; ctx.fillText('MOTHERSHIP', W / 2, ly);
+    ctx.fillStyle = 'rgba(255,255,255,.12)'; ctx.beginPath(); ctx.roundRect(x, by, w, bh, bh / 2); ctx.fill();
     ctx.shadowColor = `rgb(${COL.pink})`; ctx.shadowBlur = 12; ctx.fillStyle = `rgb(${COL.pink})`;
-    ctx.beginPath(); ctx.roundRect(x, 30, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), 8, 4); ctx.fill(); ctx.shadowBlur = 0;
+    ctx.beginPath(); ctx.roundRect(x, by, Math.max(6, w * clamp(e.hp / e.maxHp, 0, 1)), bh, bh / 2); ctx.fill(); ctx.shadowBlur = 0;
   }
 
   // auto-fire indicator
-  ctx.textAlign = 'left'; ctx.font = `700 10px ${FONT}`;
-  ctx.fillStyle = S.auto ? rgba(COL.cyan, .85) : 'rgba(180,188,235,.5)';
-  ctx.fillText(`AUTO-FIRE ${S.auto ? 'ON' : 'OFF'}  [F]`, 16, H - 16);
+  if (!LITE) {
+    ctx.textAlign = 'left'; ctx.font = `700 10px ${FONT}`;
+    ctx.fillStyle = S.auto ? rgba(COL.cyan, .85) : 'rgba(180,188,235,.5)';
+    ctx.fillText(`AUTO-FIRE ${S.auto ? 'ON' : 'OFF'}  [F]`, 16, H - 16);
+  }
 
   // banner
   if (S.banner) {
     const b = S.banner, a = clamp(Math.min(b.t / .4, (b.dur - b.t) / .6), 0, 1);
-    const total = b.lines.reduce((s, l) => s + l.s * 1.5, 0);
-    let y = H * .42 - total / 2;
+    const sz = l => l.s * (l.s < 30 ? UIS : 1);
+    const total = b.lines.reduce((s, l) => s + sz(l) * 1.5, 0);
+    let y = H * .45 - total / 2;
     ctx.textAlign = 'center';
     for (const l of b.lines) {
-      y += l.s * .75;
+      y += sz(l) * .75;
       const blink = l.t === 'WARNING' ? (Math.floor(S.time * 6) % 2 ? 1 : .45) : 1;
-      ctx.font = `900 ${l.s}px ${FONT}`; ctx.shadowColor = `rgb(${l.c})`; ctx.shadowBlur = 26;
+      ctx.font = `900 ${sz(l)}px ${FONT}`; ctx.shadowColor = `rgb(${l.c})`; ctx.shadowBlur = 26;
       ctx.fillStyle = rgba(l.c, a * blink); ctx.fillText(l.t, W / 2, y);
-      y += l.s * .75;
+      y += sz(l) * .75;
     }
   }
   ctx.restore();
 }
 
 function draw() {
-  const sc = cvs.width / W;
+  const sc = cvs.height / H;
   ctx.setTransform(sc, 0, 0, sc, 0, 0);
   ctx.save();
   if (S.shake > .2) { const s = S.shake * (reduced ? .25 : 1); ctx.translate((Math.random() - .5) * s, (Math.random() - .5) * s); }
@@ -1192,6 +1221,10 @@ function draw() {
 function resize() {
   const r = cvs.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
   cvs.width = Math.max(1, Math.round(r.width * dpr)); cvs.height = Math.max(1, Math.round(r.height * dpr));
+  // the playfield is always H=600 tall; its width follows the screen (1000 on the desktop cabinet)
+  const w = Math.round(H * r.width / Math.max(1, r.height)), nw = Math.abs(w - 1000) < 8 ? 1000 : clamp(w, 700, 1700);
+  if (nw !== W) { W = nw; for (const st of stars) st.x = rand(0, W); }
+  UIS = Math.max(1, .95 / (r.height / H));
 }
 new ResizeObserver(resize).observe(cvs);
 
@@ -1224,6 +1257,7 @@ function syncUI() {
   $('hud').classList.toggle('dim', S.scene === 'menu');
   $('muteBtn').textContent = muted ? 'SOUND OFF' : 'SOUND ON';
   $('muteBtn').classList.toggle('off', muted);
+  $('pauseBtn').hidden = S.scene !== 'game';
   $('bestLine').innerHTML = saved.best ? `Best score: <b>${saved.best.toLocaleString('en-US')}</b>` : 'Reach stage 3 to meet the mothership';
 }
 function toggleMute() { muted = !muted; saved.muted = muted; store.set(saved); syncUI(); }
@@ -1234,26 +1268,47 @@ function primary() {
 }
 const click = (id, fn) => $(id).addEventListener('click', e => { e.currentTarget.blur(); fn(); });
 click('startBtn', startGame); click('resumeBtn', togglePause); click('quitBtn', toMenu);
-click('retryBtn', startGame); click('menuBtn', toMenu); click('muteBtn', toggleMute);
+click('retryBtn', startGame); click('menuBtn', toMenu); click('muteBtn', toggleMute); click('pauseBtn', togglePause);
 
 /* ================= input ================= */
-const unlock = () => { unlocked = true; };
-addEventListener('pointerdown', unlock);
-addEventListener('pointermove', e => {
-  if (S.scene !== 'game') return;
+// iOS only allows audio to start from inside a touch/click, so create + resume the context right there
+function unlock() {
+  unlocked = true;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+  } catch {}
+}
+['pointerup', 'touchend', 'click'].forEach(t => addEventListener(t, unlock, { passive: true }));
+
+// mouse: the ship follows the pointer. touch: relative drag (like a trackpad) so your thumb never hides the ship.
+let drag = null;
+const aimAt = e => {
   const r = cvs.getBoundingClientRect();
   ship.tx = clamp((e.clientX - r.left) / r.width * W, 0, W);
   ship.ty = clamp((e.clientY - r.top) / r.height * H, 0, H);
+};
+addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch' && !drag && S.scene === 'game') drag = { id: e.pointerId, x: e.clientX, y: e.clientY, sx: ship.x, sy: ship.y };
+});
+addEventListener('pointermove', e => {
+  if (S.scene !== 'game') return;
+  if (e.pointerType === 'touch') {
+    if (!drag || drag.id !== e.pointerId) return;
+    const r = cvs.getBoundingClientRect();
+    ship.tx = clamp(drag.sx + (e.clientX - drag.x) / r.width * W * 1.5, 0, W);
+    ship.ty = clamp(drag.sy + (e.clientY - drag.y) / r.height * H * 1.5, 0, H);
+  } else aimAt(e);
 });
 cvs.addEventListener('pointerdown', e => {
   if (S.scene !== 'game') return;
   S.holding = true;
-  const r = cvs.getBoundingClientRect();
-  ship.tx = clamp((e.clientX - r.left) / r.width * W, 0, W);
-  ship.ty = clamp((e.clientY - r.top) / r.height * H, 0, H);
+  if (e.pointerType !== 'touch') aimAt(e);
 });
-addEventListener('pointerup', () => { S.holding = false; });
-addEventListener('pointercancel', () => { S.holding = false; });
+const release = e => { S.holding = false; if (drag && drag.id === e.pointerId) drag = null; };
+addEventListener('pointerup', release);
+addEventListener('pointercancel', release);
+addEventListener('arcade:portrait', () => { if (S.scene === 'game') togglePause(); });
 
 const KEYMAP = { ArrowUp: 'up', w: 'up', W: 'up', ArrowDown: 'down', s: 'down', S: 'down', ArrowLeft: 'left', a: 'left', A: 'left', ArrowRight: 'right', d: 'right', D: 'right', ' ': 'fire' };
 addEventListener('keydown', e => {

@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
+<meta name="theme-color" content="#05041a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Neon Pong">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>Neon Pong</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -145,14 +153,13 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 .stat i{font-style:normal; font-family:var(--display); font-size:clamp(7px,1cqw,11px); letter-spacing:.3em; color:var(--dim)}
 
 .chip{
-  position:absolute; top:1.4cqw; right:1.6cqw; z-index:4;
   font-family:var(--display); font-weight:700; font-size:clamp(8px,1.05cqw,11px); letter-spacing:.25em;
   padding:.7em 1.1em; border-radius:999px; border:1px solid var(--line); color:var(--dim);
   background:rgba(8,7,30,.6); cursor:pointer; transition:color .2s, border-color .2s;
 }
 .chip:hover{color:var(--ink); border-color:var(--ink)}
 .chip.off{color:var(--pink); border-color:rgba(255,46,147,.5)}
-.chip.back{right:auto; left:1.6cqw; text-decoration:none; font-size:clamp(9px,1.3cqw,13px); color:var(--ink); border-color:rgba(0,240,255,.5)}
+.chip.back{text-decoration:none; font-size:clamp(9px,1.3cqw,13px); color:var(--ink); border-color:rgba(0,240,255,.5)}
 
 .hints{display:flex; justify-content:center; gap:20px; flex-wrap:wrap; font-size:clamp(11px,1.3vw,14px); color:var(--dim); letter-spacing:.12em; text-transform:uppercase}
 .hints kbd{font-family:var(--display); font-size:.85em; font-weight:700; padding:.15em .55em; border:1px solid var(--line); border-radius:6px; color:var(--ink); margin-right:.4em; background:rgba(255,255,255,.04)}
@@ -166,8 +173,10 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 }
 :focus-visible{outline:2px solid var(--yellow); outline-offset:3px}
 </style>
+<link rel="stylesheet" href="mobile.css">
+<script src="shared.js" defer></script>
 </head>
-<body>
+<body data-game>
 <div class="cabinet">
   <div class="hud dim" id="hud">
     <div class="side left"><div class="who">YOU</div><div class="pips" id="pipsL"></div></div>
@@ -178,8 +187,14 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
   <div class="stage" id="stage">
     <canvas id="c" aria-label="Pong game field"></canvas>
     <div class="crt"></div>
-    <a class="chip back" href="index.html">&larr; HOME</a>
-    <button class="chip" id="muteBtn" type="button">SOUND ON</button>
+    <div class="chips">
+      <div class="grp"><a class="chip back" href="index.html">&larr; HOME</a></div>
+      <div class="grp">
+        <button class="chip pausebtn" id="pauseBtn" type="button" aria-label="Pause" hidden>&#10074;&#10074;</button>
+        <button class="chip" id="fsBtn" type="button" hidden>FULLSCREEN</button>
+        <button class="chip mute" id="muteBtn" type="button">SOUND ON</button>
+      </div>
+    </div>
 
     <!-- MENU -->
     <div class="overlay show" id="menu">
@@ -206,6 +221,7 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
       </div>
 
       <button class="btn pulse" id="startBtn" type="button">START GAME</button>
+      <div class="small only-touch">Drag up and down to move your paddle</div>
       <div class="record" id="record"></div>
     </div>
 
@@ -248,7 +264,8 @@ canvas{width:100%; height:100%; display:block; touch-action:none}
 'use strict';
 
 /* ================= constants ================= */
-const W = 1000, H = 600, TAU = Math.PI * 2;
+let W = 1000;
+const H = 600, TAU = Math.PI * 2;
 const PW = 14, PH = 96, BR = 9;
 const START_SPEED = 430, MAX_SPEED = 980, MAX_ANGLE = 62 * Math.PI / 180;
 const STEP = 1 / 120;
@@ -261,6 +278,9 @@ const DIFFS = {
   legend: { name: 'Legend', speed: 680, react: .035, err: .16, desc: 'Lightning reflexes. Rarely misses.' },
 };
 const reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+const LITE = matchMedia('(pointer: coarse)').matches;   // phones: fewer particles
+let UIS = 1;                                            // canvas text scale so HUD stays readable on small screens
+const buzz = ms => { try { window.Arcade && Arcade.buzz(ms); } catch {} };
 
 const clamp = (v, a, b) => v < a ? a : v > b ? b : v;
 const rgba = (c, a) => `rgba(${c},${a})`;
@@ -330,6 +350,7 @@ const sfx = {
 
 /* ================= effects ================= */
 function burst(x, y, col, n, spd, dir = null, spread = TAU) {
+  if (LITE) n = Math.ceil(n * .55);
   for (let k = 0; k < n; k++) {
     const a = dir === null ? Math.random() * TAU : dir + (Math.random() - .5) * spread;
     const s = spd * (.25 + Math.random() * .75);
@@ -461,6 +482,7 @@ function hit(i) {
   burst(ball.x, ball.y, p.col, 14 + Math.round(heat * 16), 300 + heat * 300, dirX > 0 ? 0 : Math.PI, 1.5);
   ring(ball.x, ball.y, p.col, 48 + heat * 36);
   sfx.paddle(S.rally);
+  if (i === 0) buzz(12);
   if (S.scene === 'game' && S.rally % 5 === 0) {
     floatText(`RALLY x${S.rally}`, W / 2, 110, COL.yellow, 28);
     seq([660, 880], .12, 'triangle', .06, .07);
@@ -480,6 +502,7 @@ function goal(scorer) {
   if (S.scene !== 'game') { serve(1.1); return; }
 
   S.score[scorer]++; S.pop[scorer] = 1;
+  buzz(scorer === 0 ? 25 : 70);
   syncHud();
   scorer === 0 ? sfx.point() : sfx.lose();
   if (S.score[scorer] >= S.target) { finish(scorer); return; }
@@ -572,6 +595,13 @@ function resize() {
   const r = cvs.getBoundingClientRect(), dpr = Math.min(window.devicePixelRatio || 1, 2);
   cvs.width = Math.max(1, Math.round(r.width * dpr));
   cvs.height = Math.max(1, Math.round(r.height * dpr));
+  // the playfield is always H=600 tall; its width follows the screen (1000 on the desktop cabinet)
+  const w = Math.round(H * r.width / Math.max(1, r.height));
+  W = Math.abs(w - 1000) < 8 ? 1000 : clamp(w, 700, 1700);
+  P[1].x = W - 44;
+  if (S.phase === 'serve') ball.x = W / 2;
+  bgGrad = null;
+  UIS = Math.max(1, .95 / (r.height / H));
 }
 new ResizeObserver(resize).observe(cvs);
 
@@ -720,7 +750,7 @@ function drawFloats() {
     const a = 1 - f.life / f.max, pop = 1 + Math.max(0, .25 - f.life) * 2;
     ctx.save();
     ctx.translate(f.x, f.y); ctx.scale(pop, pop);
-    ctx.font = `900 ${f.size}px ${FONT}`;
+    ctx.font = `900 ${f.size * (f.size < 30 ? UIS : 1)}px ${FONT}`;
     ctx.shadowColor = `rgb(${f.col})`; ctx.shadowBlur = 20;
     ctx.fillStyle = rgba(f.col, a);
     ctx.fillText(f.text, 0, 0);
@@ -744,7 +774,7 @@ function drawOverlayBits() {
         ctx.fillText(n, W / 2, H / 2 - 120 + 0);
       }
     } else {
-      ctx.font = `700 20px ${FONT}`;
+      ctx.font = `700 ${20 * UIS}px ${FONT}`;
       ctx.fillStyle = rgba(COL.white, .45 + Math.sin(S.time * 10) * .2);
       ctx.fillText('GET READY', W / 2, H / 2 - 56);
     }
@@ -753,14 +783,14 @@ function drawOverlayBits() {
   // rally counter
   if (S.rally >= 2) {
     const hot = clamp((S.rally - 2) / 18, 0, 1);
-    ctx.font = `700 15px ${FONT}`;
+    ctx.font = `700 ${15 * UIS}px ${FONT}`;
     ctx.fillStyle = rgba(hot > .5 ? COL.yellow : COL.white, .55 + hot * .4);
-    ctx.fillText(`RALLY ${S.rally}`, W / 2, 26);
+    ctx.fillText(`RALLY ${S.rally}`, W / 2, 10 + 16 * UIS);
   }
 
   // speed meter
   const frac = clamp((ball.speed - START_SPEED) / (MAX_SPEED - START_SPEED), 0, 1);
-  const bx = W / 2 - 110, by = H - 18;
+  const bx = W / 2 - 110, by = H - 8 - 10 * UIS;
   ctx.fillStyle = 'rgba(255,255,255,.1)';
   ctx.beginPath(); ctx.roundRect(bx, by, 220, 5, 3); ctx.fill();
   if (frac > 0) {
@@ -770,9 +800,9 @@ function drawOverlayBits() {
     ctx.beginPath(); ctx.roundRect(bx, by, 220 * frac, 5, 3); ctx.fill();
     ctx.shadowBlur = 0;
   }
-  ctx.font = `700 10px ${FONT}`;
+  ctx.font = `700 ${10 * UIS}px ${FONT}`;
   ctx.fillStyle = 'rgba(180,188,235,.6)';
-  ctx.fillText(`BALL SPEED  ${Math.round(ball.speed / 10)} KM/H`, W / 2, by - 12);
+  ctx.fillText(`BALL SPEED  ${Math.round(ball.speed / 10)} KM/H`, W / 2, by - 4 - 6 * UIS);
 
   // goal flash
   if (S.flash) {
@@ -783,7 +813,7 @@ function drawOverlayBits() {
 }
 
 function draw() {
-  const sc = cvs.width / W;
+  const sc = cvs.height / H;
   ctx.setTransform(sc, 0, 0, sc, 0, 0);
   ctx.save();
   if (S.shake > .2) {
@@ -832,6 +862,7 @@ function syncUI() {
   $('hud').classList.toggle('dim', S.scene === 'menu');
   $('muteBtn').textContent = muted ? 'SOUND OFF' : 'SOUND ON';
   $('muteBtn').classList.toggle('off', muted);
+  $('pauseBtn').hidden = S.scene !== 'game';
   syncHud(); syncMenu();
 }
 
@@ -850,14 +881,34 @@ $('quitBtn').addEventListener('click', e => { e.currentTarget.blur(); toMenu(); 
 $('rematchBtn').addEventListener('click', e => { e.currentTarget.blur(); startGame(); });
 $('menuBtn').addEventListener('click', e => { e.currentTarget.blur(); toMenu(); });
 $('muteBtn').addEventListener('click', e => { e.currentTarget.blur(); toggleMute(); });
+$('pauseBtn').addEventListener('click', e => { e.currentTarget.blur(); togglePause(); });
 
 /* ================= input ================= */
-const unlock = () => { unlocked = true; };
-addEventListener('pointerdown', unlock);
+// iOS only allows audio to start from inside a touch/click, so create + resume the context right there
+function unlock() {
+  unlocked = true;
+  try {
+    ac = ac || new (window.AudioContext || window.webkitAudioContext)();
+    if (ac.state === 'suspended') ac.resume();
+  } catch {}
+}
+['pointerup', 'touchend', 'click'].forEach(t => addEventListener(t, unlock, { passive: true }));
+
+// mouse: paddle follows the pointer. touch: relative drag, so your thumb never jumps the paddle.
+let drag = null;
+addEventListener('pointerdown', e => {
+  if (e.pointerType === 'touch' && !drag) drag = { id: e.pointerId, y: e.clientY, ty: input.ty };
+});
 addEventListener('pointermove', e => {
   const r = cvs.getBoundingClientRect();
-  input.ty = clamp((e.clientY - r.top) / r.height * H, 0, H);
+  if (e.pointerType === 'touch') {
+    if (drag && drag.id === e.pointerId) input.ty = clamp(drag.ty + (e.clientY - drag.y) / r.height * H * 1.3, 0, H);
+  } else input.ty = clamp((e.clientY - r.top) / r.height * H, 0, H);
 });
+const endDrag = e => { if (drag && drag.id === e.pointerId) drag = null; };
+addEventListener('pointerup', endDrag);
+addEventListener('pointercancel', endDrag);
+addEventListener('arcade:portrait', () => { if (S.scene === 'game') togglePause(); });
 addEventListener('keydown', e => {
   unlock();
   const k = e.key;

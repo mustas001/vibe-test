@@ -2,7 +2,15 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width,initial-scale=1">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#05041a">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Neon Arcade">
+<link rel="manifest" href="manifest.webmanifest">
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png">
+<link rel="icon" type="image/png" href="icons/icon-192.png">
 <title>Neon Arcade</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -16,14 +24,14 @@
 }
 *{box-sizing:border-box;margin:0;padding:0}
 body{
-  min-height:100vh; color:var(--ink); font-family:var(--body); font-weight:500;
+  min-height:100vh; min-height:100dvh; color:var(--ink); font-family:var(--body); font-weight:500;
   background:
     radial-gradient(ellipse 80% 55% at 50% -5%, #2a1260 0%, transparent 70%),
     radial-gradient(ellipse 60% 40% at 100% 100%, rgba(255,46,147,.14), transparent 70%),
     radial-gradient(ellipse 60% 40% at 0% 100%, rgba(0,240,255,.12), transparent 70%),
     #05041a;
   display:flex; flex-direction:column; align-items:center;
-  padding:clamp(32px,8vh,96px) 20px 40px; gap:clamp(28px,6vh,64px);
+  padding:calc(clamp(32px,8vh,96px) + env(safe-area-inset-top)) calc(20px + env(safe-area-inset-right)) calc(40px + env(safe-area-inset-bottom)) calc(20px + env(safe-area-inset-left)); gap:clamp(28px,6vh,64px);
   position:relative; overflow-x:hidden;
 }
 body::before{ /* drifting grid */
@@ -50,6 +58,14 @@ header{text-align:center; position:relative; display:flex; flex-direction:column
   95%{transform:translate(3px,0) skewX(5deg); filter:drop-shadow(-3px 0 0 rgba(255,46,147,.8)) drop-shadow(3px 0 0 rgba(0,240,255,.8))}
   97%{transform:none; filter:none}
 }
+.install{
+  font-family:var(--display); font-weight:900; font-size:12px; letter-spacing:.25em; color:var(--ink); cursor:pointer;
+  padding:.9em 1.8em; border-radius:99px; border:0; background:linear-gradient(90deg, rgba(0,240,255,.14), rgba(255,46,147,.14));
+  box-shadow:0 0 0 1.5px var(--cyan), 0 0 22px rgba(0,240,255,.3);
+}
+.install[hidden],.hint[hidden]{display:none}
+.hint{max-width:34ch; font-size:14px; line-height:1.4; color:var(--dim); letter-spacing:.06em; padding:10px 16px; border:1px dashed var(--line); border-radius:12px}
+.hint b{color:var(--yellow); font-weight:600}
 .tagline{font-size:clamp(12px,2vw,18px); color:var(--dim); letter-spacing:.3em; text-transform:uppercase}
 
 main{width:min(1000px,100%); position:relative}
@@ -149,6 +165,8 @@ footer{font-size:13px; letter-spacing:.2em; text-transform:uppercase; color:var(
 <header>
   <h1 class="logo" aria-label="Neon Arcade"><span class="n">NEON</span> <span class="p">ARCADE</span></h1>
   <p class="tagline">Pick a game</p>
+  <button class="install" id="installBtn" type="button" hidden>INSTALL APP</button>
+  <p class="hint" id="iosHint" hidden>Install it: tap <b>Share</b>, then <b>Add to Home Screen</b>. Games run full-screen and offline.</p>
 </header>
 
 <main>
@@ -186,5 +204,18 @@ footer{font-size:13px; letter-spacing:.2em; text-transform:uppercase; color:var(
 </main>
 
 <footer>More games coming soon</footer>
+<script src="shared.js" defer></script>
+<script>
+// "Install app" button (Android/desktop Chrome) and an iOS how-to
+addEventListener('DOMContentLoaded', () => {
+  const btn = document.getElementById('installBtn'), hint = document.getElementById('iosHint');
+  let prompt = null;
+  addEventListener('beforeinstallprompt', e => { e.preventDefault(); prompt = e; btn.hidden = false; });
+  btn.addEventListener('click', async () => { if (!prompt) return; prompt.prompt(); await prompt.userChoice; prompt = null; btn.hidden = true; });
+  addEventListener('appinstalled', () => { btn.hidden = true; });
+  const standalone = matchMedia('(display-mode: standalone)').matches || matchMedia('(display-mode: fullscreen)').matches || navigator.standalone === true;
+  if (/iphone|ipad|ipod/i.test(navigator.userAgent) && !standalone) hint.hidden = false;
+});
+</script>
 </body>
 </html>

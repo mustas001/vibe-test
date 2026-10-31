@@ -1,0 +1,89 @@
+/* Shared phone/tablet layer for the arcade pages (loaded after each page's own <style>). */
+
+html,body{overscroll-behavior:none; -webkit-tap-highlight-color:transparent; -webkit-touch-callout:none; touch-action:manipulation}
+canvas{touch-action:none}
+.overlay{touch-action:pan-y}
+
+/* top-of-stage button bar */
+.chips{position:absolute; top:1.4cqw; left:1.6cqw; right:1.6cqw; z-index:4; display:flex; justify-content:space-between; gap:8px; pointer-events:none}
+.chips .grp{display:flex; gap:6px}
+.chips .chip{pointer-events:auto; position:static}
+.chip[hidden]{display:none}
+.chip.pausebtn{letter-spacing:.05em}
+.only-touch{display:none}
+
+/* "rotate your phone" gate */
+#rotate{display:none; position:fixed; inset:0; z-index:1000; background:#05041a; color:var(--ink);
+  flex-direction:column; align-items:center; justify-content:center; gap:22px; padding:24px; text-align:center; font-family:var(--display)}
+#rotate .phone{width:52px; height:90px; border:3px solid var(--cyan); border-radius:12px; box-shadow:0 0 22px var(--cyan), inset 0 0 14px rgba(0,240,255,.25); animation:turn 2.6s ease-in-out infinite}
+#rotate .msg{font-weight:900; letter-spacing:.2em; font-size:18px; color:var(--ink); text-shadow:0 0 16px var(--cyan)}
+#rotate .sub{font-family:var(--body); color:var(--dim); letter-spacing:.14em; text-transform:uppercase; font-size:14px}
+@keyframes turn{0%,25%{transform:rotate(0)}65%,100%{transform:rotate(-90deg)}}
+@media (pointer:coarse) and (orientation:portrait){
+  body[data-game] #rotate{display:flex}
+  body[data-game] .cabinet{visibility:hidden}
+}
+
+@media (pointer:coarse){
+  .only-touch{display:block}
+  .only-kbd{display:none !important}
+  .overlay{backdrop-filter:none; -webkit-backdrop-filter:none; background:rgba(5,4,26,.88)}
+  .crt{display:none}
+  .chip{padding:.85em 1.3em}
+}
+
+/* ---- full-screen layout: phones/tablets in landscape, or any short window ---- */
+@media (max-height:520px), (pointer:coarse) and (orientation:landscape){
+  html,body{height:100%}
+  body{align-items:stretch; justify-content:stretch}
+  .cabinet{width:100%; height:100dvh; gap:4px;
+    padding:max(4px,env(safe-area-inset-top)) max(10px,env(safe-area-inset-right)) max(4px,env(safe-area-inset-bottom)) max(10px,env(safe-area-inset-left))}
+  .stage{flex:1 1 0; min-height:0; width:100%; aspect-ratio:auto; border-radius:12px;
+    box-shadow:0 0 0 1px rgba(140,150,255,.3), 0 0 26px -6px rgba(0,240,255,.35), 0 0 26px -6px rgba(255,46,147,.35)}
+  .hints{display:none}
+  .crt{display:none}
+
+  /* one-line HUD */
+  .hud{align-items:center; gap:8px; min-height:0}
+  .side{flex-direction:row; align-items:center; gap:10px}
+  .side.right{flex-direction:row-reverse}
+  .who{font-size:11px}
+  .pips{gap:6px; min-height:0}
+  .pip{width:9px; height:9px}
+  .mid{gap:1px}
+  .mid .tag{font-size:8px; letter-spacing:.22em}
+  .mid .sub{font-size:11px; letter-spacing:.12em}
+  .blk{flex-direction:row; align-items:center; gap:8px}
+  .blk.right{flex-direction:row-reverse}
+  .blk .val{display:none}
+  .lbl{font-size:8px; letter-spacing:.2em}
+  .bar{height:8px; width:min(28vw,200px)}
+  .bar.thin{height:4px; width:min(20vw,150px)}
+  .score{font-size:18px}
+  .hud.dim{opacity:0}
+
+  /* chips: keep controls out of the way while playing */
+  .chips{top:6px; left:8px; right:8px}
+  .chip{font-size:9px}
+  .stage.playing .chip.back, .stage.playing .chip.mute, .stage.playing #fsBtn{opacity:0; pointer-events:none}
+  .stage.playing .chip.pausebtn{opacity:.55}
+}
+
+/* short screens: tighten the menu / pause / game-over panels */
+@media (max-height:520px){
+  .overlay{gap:6px; padding:34px 10px 8px}
+  .logo{font-size:clamp(24px,9.5vh,54px)}
+  .tagline,.record,.hide-sm,.desc,.quip{display:none !important}
+  .guide .germ span{display:none}
+  .germ{flex-direction:row; padding:5px 10px; gap:8px}
+  .germ .dot{width:22px; font-size:9px}
+  .guide{gap:6px}
+  .seg button{padding:.55em 1.1em}
+  .btn{padding:.7em 1.8em; font-size:12px}
+  .big,.big.paused{font-size:clamp(22px,10vh,48px)}
+  .final{font-size:clamp(18px,8vh,34px)}
+  .stat{padding:4px 12px}
+  .lbl{font-size:8px}
+  .row{gap:3px}
+  .small{font-size:11px}
+}
